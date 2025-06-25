@@ -1,0 +1,18 @@
+{
+  "name": "akari-yoga-music-app",
+  "version": "1.0.0",
+  "description": "A generative audio companion for Akari Yoga Studio.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@google-cloud/text-to-speech": "^5.3.0",
+    "@google/generative-ai": "^0.15.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
