@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from '@google/genai';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import os from 'os';
 import util from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,25 +18,36 @@ const port = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Middleware
+// --- Vercel Deployment Fix for Google Cloud Credentials ---
+// This block checks if the JSON key is provided as an environment variable,
+// writes it to a temporary file, and sets the official environment variable
+// to point to that file's path. This is necessary for the Text-to-Speech client.
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  const credentialsPath = path.join(os.tmpdir(), 'gcloud-credentials.json');
+  fs.writeFileSync(credentialsPath, process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
+}
+
+
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
 
-// Serve the frontend (index.html)
+// Serve the frontend (index.html is inside the 'public' folder)
 app.use(express.static(path.join(__dirname, 'public')));
 
 
 // --- Create and serve static audio files ---
-const audioDir = path.join(__dirname, 'music_cache');
+const audioDir = path.join(os.tmpdir(), 'akari_audio'); // Use temp directory for serverless environment
 if (!fs.existsSync(audioDir)) {
-  fs.mkdirSync(audioDir);
+  fs.mkdirSync(audioDir, { recursive: true });
 }
 app.use('/audio', express.static(audioDir));
 
 
 // --- Google AI Clients ---
 if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY not found in .env file");
+    throw new Error("GEMINI_API_KEY not found in .env file or environment variables");
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const ttsClient = new TextToSpeechClient();
@@ -43,7 +55,6 @@ const ttsClient = new TextToSpeechClient();
 
 // --- API Endpoints ---
 
-// Endpoint to generate a detailed text prompt
 app.post('/api/generate-prompt', async (req, res) => {
     try {
         const { mood, style } = req.body;
@@ -64,7 +75,6 @@ app.post('/api/generate-prompt', async (req, res) => {
 });
 
 
-// Endpoint to take text and generate audio
 app.post('/api/generate-audio', async (req, res) => {
     try {
         const { prompt } = req.body;
@@ -89,7 +99,6 @@ app.post('/api/generate-audio', async (req, res) => {
         await writeFile(filePath, response.audioContent, 'binary');
         console.log(`Audio content written to file: ${filename}`);
 
-        // Return the URL path to access the file
         res.json({ audioUrl: `/audio/${filename}` });
 
     } catch (error) {
