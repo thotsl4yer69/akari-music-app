@@ -7,21 +7,13 @@ import fs from 'fs';
 import os from 'os';
 import util from 'util';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 // --- Configuration ---
 dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ES Module equivalent of __dirname for Vercel's environment
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // --- Vercel Deployment Fix for Google Cloud Credentials ---
-// This block is crucial for Vercel. It checks for the JSON key content
-// in the environment variable, writes it to a temporary file, and then
-// sets the official GOOGLE_APPLICATION_CREDENTIALS path variable to that file.
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   try {
     const credentialsPath = path.join(os.tmpdir(), 'gcloud-credentials.json');
@@ -34,18 +26,22 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
 }
 
 // --- Middleware ---
-app.use(cors()); // Allows your frontend to talk to this backend
-app.use(express.json()); // Allows the server to understand JSON requests
+app.use(cors());
+app.use(express.json());
 
-// Serve the 'public' folder which contains your index.html
-app.use(express.static(path.join(__dirname, 'public')));
+// --- Vercel Path Correction for Static Files ---
+// Instead of __dirname, we use process.cwd() which correctly points
+// to the project root in Vercel's environment.
+const publicDir = path.join(process.cwd(), 'public');
+app.use(express.static(publicDir));
+
 
 // --- Create and serve static audio files from a temporary directory ---
 const audioDir = path.join(os.tmpdir(), 'akari_audio');
 if (!fs.existsSync(audioDir)) {
   fs.mkdirSync(audioDir, { recursive: true });
 }
-app.use('/audio', express.static(audioDir)); // This makes generated audio accessible via a URL
+app.use('/audio', express.static(audioDir));
 
 
 // --- Google AI Clients ---
@@ -55,9 +51,6 @@ if (process.env.GEMINI_API_KEY) {
 } else {
   console.error("GEMINI_API_KEY not found. Text generation will fail.");
 }
-
-// The TextToSpeechClient will automatically find the credentials file
-// thanks to the Vercel fix block above.
 const ttsClient = new TextToSpeechClient();
 
 
@@ -95,17 +88,16 @@ app.post('/api/generate-audio', async (req, res) => {
         await util.promisify(fs.writeFile)(filePath, response.audioContent, 'binary');
         
         console.log(`Audio content written to file: ${filename}`);
-        res.json({ audioUrl: `/audio/${filename}` }); // Return the web-accessible URL
+        res.json({ audioUrl: `/audio/${filename}` });
     } catch (error) {
         console.error("Error in /api/generate-audio:", error);
         res.status(500).json({ error: 'Failed to generate audio.' });
     }
 });
 
-// Serve the main index.html file for any request not caught by the API routes
+// Serve the main index.html file for any other request
 app.get('*', (req, res) => {
-    // This makes sure that if a user refreshes the page, it still loads the app
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(publicDir, 'index.html'));
 });
 
 // --- Start Server ---
