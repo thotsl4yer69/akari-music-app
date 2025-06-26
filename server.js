@@ -104,6 +104,7 @@ app.post('/api/generate-audio', async (req, res) => {
 
 // Serve the main index.html file for any request not caught by the API routes
 app.get('*', (req, res) => {
+    // This makes sure that if a user refreshes the page, it still loads the app
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
