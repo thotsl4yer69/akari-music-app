@@ -14,10 +14,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // --- Vercel Deployment Fix for Google Cloud Credentials ---
+// This block is crucial for Vercel. It checks for the JSON key content
+// in the environment variable, writes it to a temporary file, and then
+// sets the official GOOGLE_APPLICATION_CREDENTIALS path variable to that file.
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   try {
+    // Create a temporary path for the credentials file
     const credentialsPath = path.join(os.tmpdir(), 'gcloud-credentials.json');
+    // Write the content of the environment variable to this new file
     fs.writeFileSync(credentialsPath, process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    // Tell the Google Cloud library where to find these credentials
     process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
     console.log('Successfully created temporary credentials file for Vercel.');
   } catch (error) {
@@ -26,17 +32,16 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
 }
 
 // --- Middleware ---
-app.use(cors());
-app.use(express.json());
+app.use(cors()); // Allows your frontend to talk to this backend
+app.use(express.json()); // Allows the server to understand JSON requests
 
 // --- Vercel Path Correction for Static Files ---
-// Instead of __dirname, we use process.cwd() which correctly points
-// to the project root in Vercel's environment.
+// process.cwd() correctly points to the project root in Vercel's environment.
 const publicDir = path.join(process.cwd(), 'public');
 app.use(express.static(publicDir));
 
-
 // --- Create and serve static audio files from a temporary directory ---
+// Using the OS temp directory is best practice for serverless environments like Vercel
 const audioDir = path.join(os.tmpdir(), 'akari_audio');
 if (!fs.existsSync(audioDir)) {
   fs.mkdirSync(audioDir, { recursive: true });
@@ -49,8 +54,12 @@ let genAI;
 if (process.env.GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 } else {
+  // This will log an error in Vercel if the key is missing
   console.error("GEMINI_API_KEY not found. Text generation will fail.");
 }
+
+// The TextToSpeechClient will automatically find the credentials file
+// thanks to the Vercel fix block above.
 const ttsClient = new TextToSpeechClient();
 
 
@@ -88,14 +97,14 @@ app.post('/api/generate-audio', async (req, res) => {
         await util.promisify(fs.writeFile)(filePath, response.audioContent, 'binary');
         
         console.log(`Audio content written to file: ${filename}`);
-        res.json({ audioUrl: `/audio/${filename}` });
+        res.json({ audioUrl: `/audio/${filename}` }); // Return the web-accessible URL
     } catch (error) {
         console.error("Error in /api/generate-audio:", error);
         res.status(500).json({ error: 'Failed to generate audio.' });
     }
 });
 
-// Serve the main index.html file for any other request
+// Serve the main index.html file for any request not caught by the API routes
 app.get('*', (req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
 });
